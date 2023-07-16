@@ -13,8 +13,8 @@ export default class PoseNet extends React.Component {
     showVideo: true,
     showSkeleton: true,
     showPoints: true,
-    minPoseConfidence: 0.1,
-    minPartConfidence: 0.5,
+    minPoseConfidence: 0.2,
+    minPartConfidence: 0.6,
     maxPoseDetections: 2,
     nmsRadius: 20.0,
     outputStride: 16,
@@ -26,7 +26,15 @@ export default class PoseNet extends React.Component {
 
   constructor(props) {
     super(props, PoseNet.defaultProps)
-    this.state = { loading: true }
+    this.state = { 
+      loading: true,
+      squatStage: 'None',
+      state_sequence: [],
+      correctSquatCount: 0,
+      incorrectSquatCount: 0,
+      kneeToToeError: false,
+      squatDepthError: false,
+    }
   }
 
   getCanvas = elem => {
@@ -122,7 +130,7 @@ export default class PoseNet extends React.Component {
     const video = this.video
 
     const poseDetectionFrameInner = async () => {
-      let poses = []
+      let poses = [];
 
       switch (algorithm) {
         case 'single-pose':
@@ -173,6 +181,98 @@ export default class PoseNet extends React.Component {
           if (showSkeleton) {
             drawSkeleton(keypoints, minPartConfidence, skeletonColor, skeletonLineWidth, ctx);
           }
+          const currentStage = this.state.squatStage;
+          const sequence = this.state.state_sequence;
+          const rightKneeIndex = 14;
+          const rightHipIndex = 12;
+          const ankleIndex = 16;
+          const rightKnee = keypoints[rightKneeIndex].position;
+          const rightHip = keypoints[rightHipIndex].position;
+          const ankle = keypoints[ankleIndex].position;
+          
+          const squatDepthElement = document.getElementById('squatDepth');
+
+          if(keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence){
+            const kneeAngle = (90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI));
+            
+            if (kneeAngle <= 32) {
+              if (currentStage !== 's1') {
+                this.setState({ squatStage: 's1' }, () => {
+                  console.log('目前狀態：s1');
+            
+                  if (
+                    sequence.length === 3 &&
+                    sequence[0] === 's2' &&
+                    sequence[1] === 's3' &&
+                    sequence[2] === 's2'
+                  ) {
+                    if (this.state.kneeToToeError || this.state.squatDepthError) {
+                      this.setState(prevState => ({
+                        incorrectSquatCount: prevState.incorrectSquatCount + 1
+                      }));
+                    } else {
+                      this.setState(prevState => ({
+                        correctSquatCount: prevState.correctSquatCount + 1
+                      }));
+                    }
+                    this.setState({ squatDepthError: false, kneeToToeError: false});
+                  }
+
+                  sequence.length = 0;
+                });
+              }
+            } else if (kneeAngle >= 35 && kneeAngle <= 65) {
+              if (currentStage !== 's2') {
+                this.setState({ squatStage: 's2' }, () => {
+                  console.log('目前狀態：s2');
+            
+                  sequence.push('s2');
+                });
+              }
+            } else if (kneeAngle >= 75) {
+              if (currentStage !== 's3') {
+                this.setState({ squatStage: 's3' }, () => {
+                  console.log('目前狀態：s3');
+            
+                  sequence.push('s3');
+                });
+              }
+
+              if(kneeAngle > 95){
+                this.setState({ squatDepthError: true });
+                squatDepthElement.innerText = `蹲得太下去了`;   
+              }
+              else{
+                squatDepthElement.innerText = ``;
+              }
+            }
+            
+            
+            if (sequence.length > 3) {
+              sequence.shift(); 
+            }
+
+
+            this.setState({ state_sequence: sequence});
+          }
+
+          if(keypoints[ankleIndex].score >= minPartConfidence){
+            const ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
+            const ankleAngleElement = document.getElementById('ankleAngle');
+            const kneeangleElement = document.getElementById('kneeAngle');
+            kneeangleElement.innerText = `Ankle to Knee Angle: ${ankleAngle.toFixed(2)}°`;
+
+            if(Math.abs(ankleAngle) > 30){
+              this.setState({ kneeToToeError: true });
+              ankleAngleElement.innerText = `膝蓋超過腳趾了`;              
+            }
+            else{
+              ankleAngleElement.innerText = ``;  
+            }
+
+
+          }
+
         }
       })
 
@@ -183,15 +283,23 @@ export default class PoseNet extends React.Component {
   }
 
   render() {
+    const squatStage = this.state.squatStage;
+    const correctSquatCount = this.state.correctSquatCount;
+    const incorrectSquatCount = this.state.incorrectSquatCount;
     const loading = this.state.loading
       ? <div className="PoseNet__loading">{ this.props.loadingText }</div>
       : ''
     return (
-      <div className="PoseNet">
-        { loading }
-        <video playsInline ref={ this.getVideo }></video>
-        <canvas ref={ this.getCanvas }></canvas>
+      <div>
+        <h2>當前狀態: { squatStage } / 正確次數: { correctSquatCount } / 不正確次數: { incorrectSquatCount }</h2>
+        <div className="PoseNet">
+          { loading }
+          <video playsInline ref={ this.getVideo }></video>
+          <canvas ref={ this.getCanvas }></canvas>
+        </div>        
       </div>
+
+      
     )
   }
 }

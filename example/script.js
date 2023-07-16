@@ -67196,7 +67196,15 @@ var PoseNet = function (_React$Component) {
       _this.video = elem;
     };
 
-    _this.state = { loading: true };
+    _this.state = {
+      loading: true,
+      squatStage: 'None',
+      state_sequence: [],
+      correctSquatCount: 0,
+      incorrectSquatCount: 0,
+      kneeToToeError: false,
+      squatDepthError: false
+    };
     return _this;
   }
 
@@ -67437,6 +67445,90 @@ var PoseNet = function (_React$Component) {
                       if (showSkeleton) {
                         (0, _utils.drawSkeleton)(keypoints, minPartConfidence, skeletonColor, skeletonLineWidth, ctx);
                       }
+                      var currentStage = _this2.state.squatStage;
+                      var sequence = _this2.state.state_sequence;
+                      var rightKneeIndex = 14;
+                      var rightHipIndex = 12;
+                      var ankleIndex = 16;
+                      var rightKnee = keypoints[rightKneeIndex].position;
+                      var rightHip = keypoints[rightHipIndex].position;
+                      var ankle = keypoints[ankleIndex].position;
+
+                      var squatDepthElement = document.getElementById('squatDepth');
+
+                      if (keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence) {
+                        var kneeAngle = 90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI);
+
+                        if (kneeAngle <= 32) {
+                          if (currentStage !== 's1') {
+                            _this2.setState({ squatStage: 's1' }, function () {
+                              console.log('目前狀態：s1');
+
+                              if (sequence.length === 3 && sequence[0] === 's2' && sequence[1] === 's3' && sequence[2] === 's2') {
+                                if (_this2.state.kneeToToeError || _this2.state.squatDepthError) {
+                                  _this2.setState(function (prevState) {
+                                    return {
+                                      incorrectSquatCount: prevState.incorrectSquatCount + 1
+                                    };
+                                  });
+                                } else {
+                                  _this2.setState(function (prevState) {
+                                    return {
+                                      correctSquatCount: prevState.correctSquatCount + 1
+                                    };
+                                  });
+                                }
+                                _this2.setState({ squatDepthError: false, kneeToToeError: false });
+                              }
+
+                              sequence.length = 0;
+                            });
+                          }
+                        } else if (kneeAngle >= 35 && kneeAngle <= 65) {
+                          if (currentStage !== 's2') {
+                            _this2.setState({ squatStage: 's2' }, function () {
+                              console.log('目前狀態：s2');
+
+                              sequence.push('s2');
+                            });
+                          }
+                        } else if (kneeAngle >= 75) {
+                          if (currentStage !== 's3') {
+                            _this2.setState({ squatStage: 's3' }, function () {
+                              console.log('目前狀態：s3');
+
+                              sequence.push('s3');
+                            });
+                          }
+
+                          if (kneeAngle > 95) {
+                            _this2.setState({ squatDepthError: true });
+                            squatDepthElement.innerText = '\u8E72\u5F97\u592A\u4E0B\u53BB\u4E86';
+                          } else {
+                            squatDepthElement.innerText = '';
+                          }
+                        }
+
+                        if (sequence.length > 3) {
+                          sequence.shift();
+                        }
+
+                        _this2.setState({ state_sequence: sequence });
+                      }
+
+                      if (keypoints[ankleIndex].score >= minPartConfidence) {
+                        var ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
+                        var ankleAngleElement = document.getElementById('ankleAngle');
+                        var kneeangleElement = document.getElementById('kneeAngle');
+                        kneeangleElement.innerText = 'Ankle to Knee Angle: ' + ankleAngle.toFixed(2) + '\xB0';
+
+                        if (Math.abs(ankleAngle) > 30) {
+                          _this2.setState({ kneeToToeError: true });
+                          ankleAngleElement.innerText = '\u819D\u84CB\u8D85\u904E\u8173\u8DBE\u4E86';
+                        } else {
+                          ankleAngleElement.innerText = '';
+                        }
+                      }
                     }
                   });
 
@@ -67460,6 +67552,9 @@ var PoseNet = function (_React$Component) {
   }, {
     key: 'render',
     value: function render() {
+      var squatStage = this.state.squatStage;
+      var correctSquatCount = this.state.correctSquatCount;
+      var incorrectSquatCount = this.state.incorrectSquatCount;
       var loading = this.state.loading ? React.createElement(
         'div',
         { className: 'PoseNet__loading' },
@@ -67467,10 +67562,24 @@ var PoseNet = function (_React$Component) {
       ) : '';
       return React.createElement(
         'div',
-        { className: 'PoseNet' },
-        loading,
-        React.createElement('video', { playsInline: true, ref: this.getVideo }),
-        React.createElement('canvas', { ref: this.getCanvas })
+        null,
+        React.createElement(
+          'h2',
+          null,
+          '\u7576\u524D\u72C0\u614B: ',
+          squatStage,
+          ' / \u6B63\u78BA\u6B21\u6578: ',
+          correctSquatCount,
+          ' / \u4E0D\u6B63\u78BA\u6B21\u6578: ',
+          incorrectSquatCount
+        ),
+        React.createElement(
+          'div',
+          { className: 'PoseNet' },
+          loading,
+          React.createElement('video', { playsInline: true, ref: this.getVideo }),
+          React.createElement('canvas', { ref: this.getCanvas })
+        )
       );
     }
   }]);
@@ -67487,8 +67596,8 @@ PoseNet.defaultProps = {
   showVideo: true,
   showSkeleton: true,
   showPoints: true,
-  minPoseConfidence: 0.1,
-  minPartConfidence: 0.5,
+  minPoseConfidence: 0.2,
+  minPartConfidence: 0.6,
   maxPoseDetections: 2,
   nmsRadius: 20.0,
   outputStride: 16,

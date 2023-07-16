@@ -6,7 +6,7 @@
   "scripts": {
     "build:prod": "browserify src/PoseNet/index.jsx -o lib/index.js -u react -t [ babelify ]",
     "build:css": "node-sass src/index.scss example/style.css",
-    "copy:html": "cp src/index.html example/",
+    "copy:html": "xcopy \"src/index.html\" \"example/index.html\"",
     "prebuild:example": "npm run build:css && npm run copy:html",
     "build:example": "browserify --extension=.jsx src/index.jsx -o example/script.js -t [ babelify ]",
     "example": "npm run build:example",
@@ -46,7 +46,7 @@
     "babelify": "^8.0.0",
     "browserify": "^16.2.2",
     "live-server": "^1.2.0",
-    "node-sass": "^4.9.0",
+    "node-sass": "^6.0",
     "watch": "^1.0.2"
   }
 }
