@@ -28,12 +28,12 @@ export default class PoseNet extends React.Component {
     super(props, PoseNet.defaultProps)
     this.state = { 
       loading: true,
-      squatStage: 'None',
-      state_sequence: [],
-      correctSquatCount: 0,
-      incorrectSquatCount: 0,
-      kneeToToeError: false,
-      squatDepthError: false,
+      squatStage: 'None',     // 當前動作狀態
+      state_sequence: [],     // 動作狀態列表,正確順序為[s2,s3,s2]
+      correctSquatCount: 0,   // 正確動作次數
+      incorrectSquatCount: 0, // 錯誤動作次數
+      kneeToToeError: false,  // 動作錯誤:膝蓋超過腳趾
+      squatDepthError: false, // 動作錯誤:蹲姿過低
     }
   }
 
@@ -132,6 +132,7 @@ export default class PoseNet extends React.Component {
     const poseDetectionFrameInner = async () => {
       let poses = [];
 
+      // 單人姿勢估計or多人姿勢估計(採用單人)
       switch (algorithm) {
         case 'single-pose':
 
@@ -175,14 +176,16 @@ export default class PoseNet extends React.Component {
       // scores
       poses.forEach(({ score, keypoints }) => {
         if (score >= minPoseConfidence) {
+          // 畫出各部位的姿勢估計
           if (showPoints) {
             drawKeypoints(keypoints, minPartConfidence, skeletonColor, ctx);
           }
           if (showSkeleton) {
             drawSkeleton(keypoints, minPartConfidence, skeletonColor, skeletonLineWidth, ctx);
           }
-          const currentStage = this.state.squatStage;
-          const sequence = this.state.state_sequence;
+
+          const currentStage = this.state.squatStage; // 動作狀態
+          const sequence = this.state.state_sequence; // 狀態list
           const rightKneeIndex = 14;
           const rightHipIndex = 12;
           const ankleIndex = 16;
@@ -192,20 +195,25 @@ export default class PoseNet extends React.Component {
           
           const squatDepthElement = document.getElementById('squatDepth');
 
+          // 判斷當前畫面中是否抓到膝蓋和髖部
           if(keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence){
-            const kneeAngle = (90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI));
+            // 計算膝髖連線與垂直線夾腳
+            const kneeAngle = Math.abs((90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI)));
             
+            // 以膝髖連線與垂直線夾角判斷動作狀態
+            // 角度<=32度為狀態s1
             if (kneeAngle <= 32) {
               if (currentStage !== 's1') {
                 this.setState({ squatStage: 's1' }, () => {
                   console.log('目前狀態：s1');
-            
+                  // 判斷動作狀態list的順序是否正確([s2,s3,s2])
                   if (
                     sequence.length === 3 &&
                     sequence[0] === 's2' &&
                     sequence[1] === 's3' &&
                     sequence[2] === 's2'
                   ) {
+                    // 過程中有動作錯誤兩者其一則增加不正確次數
                     if (this.state.kneeToToeError || this.state.squatDepthError) {
                       this.setState(prevState => ({
                         incorrectSquatCount: prevState.incorrectSquatCount + 1
@@ -215,6 +223,7 @@ export default class PoseNet extends React.Component {
                         correctSquatCount: prevState.correctSquatCount + 1
                       }));
                     }
+                    // 清空動作錯誤
                     this.setState({ squatDepthError: false, kneeToToeError: false});
                   }
 
@@ -222,6 +231,7 @@ export default class PoseNet extends React.Component {
                 });
               }
             } else if (kneeAngle >= 35 && kneeAngle <= 65) {
+              // 狀態s2
               if (currentStage !== 's2') {
                 this.setState({ squatStage: 's2' }, () => {
                   console.log('目前狀態：s2');
@@ -230,6 +240,7 @@ export default class PoseNet extends React.Component {
                 });
               }
             } else if (kneeAngle >= 75) {
+              // 狀態s3
               if (currentStage !== 's3') {
                 this.setState({ squatStage: 's3' }, () => {
                   console.log('目前狀態：s3');
@@ -237,8 +248,9 @@ export default class PoseNet extends React.Component {
                   sequence.push('s3');
                 });
               }
-
+              // 處於狀態s3時下蹲角度超過95度判斷動作錯誤
               if(kneeAngle > 95){
+                // 顯示動作錯誤提醒並記錄
                 this.setState({ squatDepthError: true });
                 squatDepthElement.innerText = `蹲得太下去了`;   
               }
@@ -247,7 +259,7 @@ export default class PoseNet extends React.Component {
               }
             }
             
-            
+            // 控制list長度
             if (sequence.length > 3) {
               sequence.shift(); 
             }
@@ -256,13 +268,16 @@ export default class PoseNet extends React.Component {
             this.setState({ state_sequence: sequence});
           }
 
+          // 判斷動作過程中膝蓋是否超過腳趾
           if(keypoints[ankleIndex].score >= minPartConfidence){
             const ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
             const ankleAngleElement = document.getElementById('ankleAngle');
-            const kneeangleElement = document.getElementById('kneeAngle');
-            kneeangleElement.innerText = `Ankle to Knee Angle: ${ankleAngle.toFixed(2)}°`;
+            //const kneeangleElement = document.getElementById('kneeAngle');
+            // Test
+            //kneeangleElement.innerText = `Ankle to Knee Angle: ${ankleAngle.toFixed(2)}°`;
 
             if(Math.abs(ankleAngle) > 30){
+              // 腳踝膝蓋連線與垂直線夾角超過30度時判斷動作錯誤
               this.setState({ kneeToToeError: true });
               ankleAngleElement.innerText = `膝蓋超過腳趾了`;              
             }
@@ -276,12 +291,14 @@ export default class PoseNet extends React.Component {
         }
       })
 
+      // 畫面重複更新
       requestAnimationFrame(poseDetectionFrameInner)
     }
 
     poseDetectionFrameInner()
   }
 
+  // 輸出組件
   render() {
     const squatStage = this.state.squatStage;
     const correctSquatCount = this.state.correctSquatCount;
