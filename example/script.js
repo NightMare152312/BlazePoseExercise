@@ -67160,6 +67160,46 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+// ExerciseAnalyzer.js（獨立的檔案或模組）
+var ExerciseAnalyzer = function () {
+  function ExerciseAnalyzer(exerciseType) {
+    _classCallCheck(this, ExerciseAnalyzer);
+
+    this.exerciseType = exerciseType;
+  }
+
+  _createClass(ExerciseAnalyzer, [{
+    key: 'analyze',
+    value: function analyze(poses, keypoints) {
+      switch (this.exerciseType) {
+        case 'squat':
+          // 深蹲的分析邏輯...
+          break;
+        case 'pushup':
+          // 伏地挺身的分析邏輯...
+          break;
+        default:
+        // 預設的分析邏輯...
+      }
+    }
+  }]);
+
+  return ExerciseAnalyzer;
+}();
+
+exports.default = ExerciseAnalyzer;
+
+},{}],587:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
 var _posenet = require('@tensorflow-models/posenet');
 
 var posenet = _interopRequireWildcard(_posenet);
@@ -67170,6 +67210,12 @@ var React = _interopRequireWildcard(_react);
 
 var _utils = require('./utils');
 
+var _ExerciseAnalyzer = require('./ExerciseAnalyzer');
+
+var _ExerciseAnalyzer2 = _interopRequireDefault(_ExerciseAnalyzer);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
@@ -67179,6 +67225,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+// 引入ExerciseAnalyzer類別
 
 var PoseNet = function (_React$Component) {
   _inherits(PoseNet, _React$Component);
@@ -67196,14 +67244,217 @@ var PoseNet = function (_React$Component) {
       _this.video = elem;
     };
 
+    _this.switchExerciseType = function (exerciseType) {
+      _this.setState({ exerciseType: exerciseType });
+      var sequence = _this.state.state_sequence;
+      sequence.length = 0;
+      _this.setState({ exerciseStage: 'None', correctCount: 0, incorrectCount: 0, ExerciseError: false });
+    };
+
+    _this.ExerciseAnalyze = function (keypoints, minPartConfidence) {
+      var exerciseType = _this.state.exerciseType;
+
+      var currentStage = _this.state.exerciseStage; // 動作狀態
+      var sequence = _this.state.state_sequence; // 狀態list
+
+      // 動作分析
+      switch (exerciseType) {
+        case 'squat':
+          // 深蹲動作分析
+          var rightKneeIndex = 14;
+          var rightHipIndex = 12;
+          var ankleIndex = 16;
+          var rightKnee = keypoints[rightKneeIndex].position;
+          var rightHip = keypoints[rightHipIndex].position;
+          var ankle = keypoints[ankleIndex].position;
+
+          var squatDepthElement = document.getElementById('squatDepth');
+
+          // 判斷當前畫面中是否抓到膝蓋和髖部
+          if (keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence) {
+            // 計算膝髖連線與垂直線夾角
+            var kneeAngle = Math.abs(90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI));
+
+            // 以膝髖連線與垂直線夾角判斷動作狀態
+            // 角度<=32度為狀態s1
+            if (kneeAngle <= 32) {
+              if (currentStage !== 's1') {
+                _this.setState({ exerciseStage: 's1' }, function () {
+                  // 判斷動作狀態list的順序是否正確([s2,s3,s2])
+                  if (sequence.length === 3 && sequence[0] === 's2' && sequence[1] === 's3' && sequence[2] === 's2') {
+                    // 過程中有動作錯誤則增加不正確次數
+                    if (_this.state.ExerciseError) {
+                      _this.setState(function (prevState) {
+                        return {
+                          incorrectCount: prevState.incorrectCount + 1
+                        };
+                      });
+                    } else {
+                      _this.setState(function (prevState) {
+                        return {
+                          correctCount: prevState.correctCount + 1
+                        };
+                      });
+                    }
+                    // 清空動作錯誤
+                    _this.setState({ ExerciseError: false });
+                  }
+
+                  sequence.length = 0;
+                });
+              }
+            } else if (kneeAngle >= 35 && kneeAngle <= 65) {
+              // 狀態s2
+              if (currentStage !== 's2') {
+                _this.setState({ exerciseStage: 's2' }, function () {
+
+                  sequence.push('s2');
+                });
+              }
+            } else if (kneeAngle >= 75) {
+              // 狀態s3
+              if (currentStage !== 's3') {
+                _this.setState({ exerciseStage: 's3' }, function () {
+
+                  sequence.push('s3');
+                });
+              }
+              // 處於狀態s3時下蹲角度超過95度判斷動作錯誤
+              if (kneeAngle > 95) {
+                // 顯示動作錯誤提醒並記錄
+                _this.setState({ ExerciseError: true });
+                squatDepthElement.innerText = '\u8E72\u5F97\u592A\u4E0B\u53BB\u4E86';
+              } else {
+                squatDepthElement.innerText = '';
+              }
+            }
+
+            // 控制list長度
+            if (sequence.length > 3) {
+              sequence.shift();
+            }
+
+            _this.setState({ state_sequence: sequence });
+          }
+
+          // 判斷動作過程中膝蓋是否超過腳趾
+          if (keypoints[ankleIndex].score >= minPartConfidence) {
+            var ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
+            var ankleAngleElement = document.getElementById('ankleAngle');
+            //const kneeangleElement = document.getElementById('kneeAngle');
+            // Test
+            //kneeangleElement.innerText = `Ankle to Knee Angle: ${ankleAngle.toFixed(2)}°`;
+
+            if (Math.abs(ankleAngle) > 30) {
+              // 腳踝膝蓋連線與垂直線夾角超過30度時判斷動作錯誤
+              _this.setState({ ExerciseError: true });
+              ankleAngleElement.innerText = '\u819D\u84CB\u8D85\u904E\u8173\u8DBE\u4E86';
+            } else {
+              ankleAngleElement.innerText = '';
+            }
+          }
+
+          break;
+        case 'pushup':
+          // 伏地挺身分析
+
+
+          break;
+        case 'bicep-curl':
+          // 二頭彎舉分析
+          var rightWristIndex = 10;
+          var rightElbowIndex = 8;
+          var rightShoulderIndex = 6;
+
+          if (keypoints[rightWristIndex].score >= minPartConfidence && keypoints[rightElbowIndex].score >= minPartConfidence && keypoints[rightShoulderIndex].score >= minPartConfidence) {
+            // 獲取右手腕、右肘和右肩的位置
+            var rightWrist = keypoints[rightWristIndex].position;
+            var rightElbow = keypoints[rightElbowIndex].position;
+            var rightShoulder = keypoints[rightShoulderIndex].position;
+
+            // 計算手臂抬起角度
+            var armAngle = Math.abs((Math.atan2(rightWrist.y - rightElbow.y, rightWrist.x - rightElbow.x) - Math.atan2(rightShoulder.y - rightElbow.y, rightShoulder.x - rightElbow.x)) * (180 / Math.PI));
+
+            if (armAngle >= 140) {
+              if (currentStage !== 's1') {
+                _this.setState({ exerciseStage: 's1' }, function () {
+                  // 判斷動作狀態list的順序是否正確([s2,s3,s2])
+                  if (sequence.length === 3 && sequence[0] === 's2' && sequence[1] === 's3' && sequence[2] === 's2') {
+                    // 過程中有動作錯誤則增加不正確次數
+                    if (_this.state.ExerciseError) {
+                      _this.setState(function (prevState) {
+                        return {
+                          incorrectCount: prevState.incorrectCount + 1
+                        };
+                      });
+                    } else {
+                      _this.setState(function (prevState) {
+                        return {
+                          correctCount: prevState.correctCount + 1
+                        };
+                      });
+                    }
+                    // 清空動作錯誤
+                    _this.setState({ ExerciseError: false });
+                  }
+
+                  sequence.length = 0;
+                });
+              }
+            } else if (armAngle > 55 && armAngle <= 130) {
+              // 狀態s2
+              if (currentStage !== 's2') {
+                _this.setState({ exerciseStage: 's2' }, function () {
+
+                  sequence.push('s2');
+                });
+              }
+            } else if (armAngle < 65) {
+              // 狀態s3
+              if (currentStage !== 's3') {
+                _this.setState({ exerciseStage: 's3' }, function () {
+
+                  sequence.push('s3');
+                });
+              }
+            }
+
+            // 控制list長度
+            if (sequence.length > 3) {
+              sequence.shift();
+            }
+
+            _this.setState({ state_sequence: sequence });
+
+            var shoulderToElbowLineAngle = Math.abs((Math.atan2(rightElbow.y - rightShoulder.y, rightElbow.x - rightShoulder.x) - Math.PI / 2) * (180 / Math.PI));
+            var _ankleAngleElement = document.getElementById('ankleAngle');
+
+            if (shoulderToElbowLineAngle > 40) {
+              _this.setState({ ExerciseError: true }, function () {
+                _ankleAngleElement.innerText = '\u6CE8\u610F\u4E0A\u81C2\u4F4D\u7F6E';
+              });
+            } else {
+              _ankleAngleElement.innerText = '';
+            }
+          }
+          break;
+        default:
+          // 預設不做任何事
+          break;
+      };
+    };
+
     _this.state = {
       loading: true,
-      squatStage: 'None',
-      state_sequence: [],
-      correctSquatCount: 0,
-      incorrectSquatCount: 0,
-      kneeToToeError: false,
-      squatDepthError: false
+      exerciseStage: 'None', // 當前動作狀態
+      state_sequence: [], // 動作狀態列表,正確順序為[s2,s3,s2]
+      correctCount: 0, // 正確動作次數
+      incorrectCount: 0, // 錯誤動作次數
+      ExerciseError: false,
+      exerciseType: 'squat',
+      currentSet: 1, // 當前組數
+      restTimeRemaining: 0, // 組間休息剩餘時間 (秒)
+      isResting: false // 是否正在進行組間休息
     };
     return _this;
   }
@@ -67395,6 +67646,9 @@ var PoseNet = function (_React$Component) {
               switch (_context4.prev = _context4.next) {
                 case 0:
                   poses = [];
+
+                  // 單人姿勢估計or多人姿勢估計(採用單人)
+
                   _context4.t0 = algorithm;
                   _context4.next = _context4.t0 === 'single-pose' ? 4 : _context4.t0 === 'multi-pose' ? 9 : 13;
                   break;
@@ -67439,100 +67693,21 @@ var PoseNet = function (_React$Component) {
                         keypoints = _ref5.keypoints;
 
                     if (score >= minPoseConfidence) {
+                      // 畫出各部位的姿勢估計
                       if (showPoints) {
                         (0, _utils.drawKeypoints)(keypoints, minPartConfidence, skeletonColor, ctx);
                       }
                       if (showSkeleton) {
                         (0, _utils.drawSkeleton)(keypoints, minPartConfidence, skeletonColor, skeletonLineWidth, ctx);
                       }
-                      var currentStage = _this2.state.squatStage;
-                      var sequence = _this2.state.state_sequence;
-                      var rightKneeIndex = 14;
-                      var rightHipIndex = 12;
-                      var ankleIndex = 16;
-                      var rightKnee = keypoints[rightKneeIndex].position;
-                      var rightHip = keypoints[rightHipIndex].position;
-                      var ankle = keypoints[ankleIndex].position;
-
-                      var squatDepthElement = document.getElementById('squatDepth');
-
-                      if (keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence) {
-                        var kneeAngle = 90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI);
-
-                        if (kneeAngle <= 32) {
-                          if (currentStage !== 's1') {
-                            _this2.setState({ squatStage: 's1' }, function () {
-                              console.log('目前狀態：s1');
-
-                              if (sequence.length === 3 && sequence[0] === 's2' && sequence[1] === 's3' && sequence[2] === 's2') {
-                                if (_this2.state.kneeToToeError || _this2.state.squatDepthError) {
-                                  _this2.setState(function (prevState) {
-                                    return {
-                                      incorrectSquatCount: prevState.incorrectSquatCount + 1
-                                    };
-                                  });
-                                } else {
-                                  _this2.setState(function (prevState) {
-                                    return {
-                                      correctSquatCount: prevState.correctSquatCount + 1
-                                    };
-                                  });
-                                }
-                                _this2.setState({ squatDepthError: false, kneeToToeError: false });
-                              }
-
-                              sequence.length = 0;
-                            });
-                          }
-                        } else if (kneeAngle >= 35 && kneeAngle <= 65) {
-                          if (currentStage !== 's2') {
-                            _this2.setState({ squatStage: 's2' }, function () {
-                              console.log('目前狀態：s2');
-
-                              sequence.push('s2');
-                            });
-                          }
-                        } else if (kneeAngle >= 75) {
-                          if (currentStage !== 's3') {
-                            _this2.setState({ squatStage: 's3' }, function () {
-                              console.log('目前狀態：s3');
-
-                              sequence.push('s3');
-                            });
-                          }
-
-                          if (kneeAngle > 95) {
-                            _this2.setState({ squatDepthError: true });
-                            squatDepthElement.innerText = '\u8E72\u5F97\u592A\u4E0B\u53BB\u4E86';
-                          } else {
-                            squatDepthElement.innerText = '';
-                          }
-                        }
-
-                        if (sequence.length > 3) {
-                          sequence.shift();
-                        }
-
-                        _this2.setState({ state_sequence: sequence });
-                      }
-
-                      if (keypoints[ankleIndex].score >= minPartConfidence) {
-                        var ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
-                        var ankleAngleElement = document.getElementById('ankleAngle');
-                        var kneeangleElement = document.getElementById('kneeAngle');
-                        kneeangleElement.innerText = 'Ankle to Knee Angle: ' + ankleAngle.toFixed(2) + '\xB0';
-
-                        if (Math.abs(ankleAngle) > 30) {
-                          _this2.setState({ kneeToToeError: true });
-                          ankleAngleElement.innerText = '\u819D\u84CB\u8D85\u904E\u8173\u8DBE\u4E86';
-                        } else {
-                          ankleAngleElement.innerText = '';
-                        }
-                      }
+                      // 進行指定運動分析
+                      _this2.ExerciseAnalyze(keypoints, minPartConfidence);
+                      _this2.startRestCountdown();
                     }
                   });
 
-                  requestAnimationFrame(poseDetectionFrameInner);
+                  // 畫面重複更新
+                  _this2.poseDetectionFrameId = requestAnimationFrame(poseDetectionFrameInner);
 
                 case 17:
                 case 'end':
@@ -67550,11 +67725,77 @@ var PoseNet = function (_React$Component) {
       poseDetectionFrameInner();
     }
   }, {
+    key: 'startRestCountdown',
+    value: function startRestCountdown() {
+      var _this3 = this;
+
+      var _state = this.state,
+          correctCount = _state.correctCount,
+          incorrectCount = _state.incorrectCount,
+          currentSet = _state.currentSet,
+          restTimeRemaining = _state.restTimeRemaining,
+          isResting = _state.isResting,
+          exerciseType = _state.exerciseType;
+      var _props4 = this.props,
+          repsPerSet = _props4.repsPerSet,
+          totalSets = _props4.totalSets;
+
+      // 檢查是否達到組數，並且不在休息狀態中
+
+      if (!isResting && correctCount + incorrectCount >= repsPerSet) {
+        console.log("helllo");
+        // 開始進入組間休息時間
+        this.setState({ isResting: true, restTimeRemaining: 90 });
+
+        // 停止運動分析
+        this.switchExerciseType('rest');
+        // 將 correctCount 和 incorrectCount 歸零
+        this.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
+        // 定時器，每秒更新休息時間
+        var restTimer = setInterval(function () {
+          _this3.setState(function (prevState) {
+            return { restTimeRemaining: prevState.restTimeRemaining - 1 };
+          }, function () {
+            // 檢查休息時間是否結束
+            if (_this3.state.restTimeRemaining === 0) {
+              clearInterval(restTimer); // 停止定時器
+              _this3.setState(function (prevState) {
+                return {
+                  currentSet: prevState.currentSet + 1,
+                  isResting: false // 結束休息狀態
+                };
+              }, function () {
+                // 檢查是否達到總組數
+                if (_this3.state.currentSet <= totalSets) {
+                  // 繼續進行運動分析
+                  _this3.switchExerciseType(exerciseType);
+                } else {
+                  // 停止運動分析
+                  _this3.switchExerciseType('rest');
+                  _this3.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
+                }
+              });
+            }
+          });
+        }, 1000);
+      }
+    }
+
+    // 輸出組件
+
+  }, {
     key: 'render',
     value: function render() {
-      var squatStage = this.state.squatStage;
-      var correctSquatCount = this.state.correctSquatCount;
-      var incorrectSquatCount = this.state.incorrectSquatCount;
+      var _this4 = this;
+
+      var _state2 = this.state,
+          currentSet = _state2.currentSet,
+          isResting = _state2.isResting,
+          restTimeRemaining = _state2.restTimeRemaining,
+          incorrectCount = _state2.incorrectCount,
+          correctCount = _state2.correctCount,
+          exerciseStage = _state2.exerciseStage;
+
       var loading = this.state.loading ? React.createElement(
         'div',
         { className: 'PoseNet__loading' },
@@ -67564,14 +67805,45 @@ var PoseNet = function (_React$Component) {
         'div',
         null,
         React.createElement(
-          'h2',
+          'h3',
           null,
           '\u7576\u524D\u72C0\u614B: ',
-          squatStage,
+          exerciseStage,
           ' / \u6B63\u78BA\u6B21\u6578: ',
-          correctSquatCount,
+          correctCount,
           ' / \u4E0D\u6B63\u78BA\u6B21\u6578: ',
-          incorrectSquatCount
+          incorrectCount,
+          ' / \u7576\u524D\u7D44\u6578: ',
+          currentSet,
+          ' / ',
+          isResting && React.createElement(
+            'p',
+            null,
+            '\u4F11\u606F\u6642\u9593: ',
+            restTimeRemaining,
+            '\u79D2'
+          )
+        ),
+        React.createElement(
+          'button',
+          { onClick: function onClick() {
+              return _this4.switchExerciseType('squat');
+            } },
+          '\u6DF1\u8E72'
+        ),
+        React.createElement(
+          'button',
+          { onClick: function onClick() {
+              return _this4.switchExerciseType('pushup');
+            } },
+          '\u4F0F\u5730\u633A\u8EAB'
+        ),
+        React.createElement(
+          'button',
+          { onClick: function onClick() {
+              return _this4.switchExerciseType('bicep-curl');
+            } },
+          '\u4E8C\u982D\u5F4E\u8209'
         ),
         React.createElement(
           'div',
@@ -67604,11 +67876,13 @@ PoseNet.defaultProps = {
   imageScaleFactor: 0.5,
   skeletonColor: 'aqua',
   skeletonLineWidth: 2,
-  loadingText: 'Loading pose detector...'
+  loadingText: 'Loading pose detector...',
+  repsPerSet: 10, // 每組數量，預設10
+  totalSets: 3 // 總組數，預設3
 };
 exports.default = PoseNet;
 
-},{"./utils":587,"@tensorflow-models/posenet":9,"react":575}],587:[function(require,module,exports){
+},{"./ExerciseAnalyzer":586,"./utils":588,"@tensorflow-models/posenet":9,"react":575}],588:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -67692,7 +67966,7 @@ function drawSkeleton(keypoints, minConfidence, color, lineWidth, ctx) {
   });
 }
 
-},{"@tensorflow-models/posenet":9}],588:[function(require,module,exports){
+},{"@tensorflow-models/posenet":9}],589:[function(require,module,exports){
 'use strict';
 
 require('babel-polyfill');
@@ -67731,4 +68005,4 @@ _reactDom2.default.render(React.createElement(
   React.createElement(_PoseNet2.default, null)
 ), document.getElementById('example'));
 
-},{"./PoseNet":586,"babel-polyfill":210,"react":575,"react-dom":572}]},{},[588]);
+},{"./PoseNet":587,"babel-polyfill":210,"react":575,"react-dom":572}]},{},[589]);
