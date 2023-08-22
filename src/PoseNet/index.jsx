@@ -1,7 +1,6 @@
 import * as posenet from '@tensorflow-models/posenet'
 import * as React from 'react'
 import { isMobile, drawKeypoints, drawSkeleton } from './utils'
-import ExerciseAnalyzer from './ExerciseAnalyzer'; // 引入ExerciseAnalyzer類別
 
 export default class PoseNet extends React.Component {
 
