@@ -1,6 +1,9 @@
-import * as posenet from '@tensorflow-models/posenet'
 import * as React from 'react'
 import { isMobile, drawKeypoints, drawSkeleton } from './utils'
+import * as poseDetection from '@tensorflow-models/pose-detection';
+import * as tf from '@tensorflow/tfjs-core';
+// Register WebGL backend.
+import '@tensorflow/tfjs-backend-webgl';
 
 export default class PoseNet extends React.Component {
 
@@ -39,6 +42,7 @@ export default class PoseNet extends React.Component {
       currentSet: 1,            // 當前組數
       restTimeRemaining: 0,     // 組間休息剩餘時間 (秒)
       isResting: false,         // 是否正在進行組間休息
+      readyForm: false,
     }
   }
 
@@ -50,12 +54,15 @@ export default class PoseNet extends React.Component {
     this.video = elem
   }
 
-  async componentWillMount() {
-    // Loads the pre-trained PoseNet model
-    this.net = await posenet.load(this.props.mobileNetArchitecture);
-  }
-
   async componentDidMount() {
+    await tf.ready();
+    const model = poseDetection.SupportedModels.BlazePose;
+    const detectorConfig = {
+      runtime: 'tfjs',
+      enableSmoothing: true,
+      modelType: 'lite'
+    };
+    this.net = await poseDetection.createDetector(model, detectorConfig);
     try {
       await this.setupCamera()
     } catch(e) {
@@ -114,14 +121,8 @@ export default class PoseNet extends React.Component {
 
   poseDetectionFrame(ctx) {
     const {
-      algorithm,
-      imageScaleFactor,
-      flipHorizontal,
-      outputStride,
       minPoseConfidence,
-      maxPoseDetections,
       minPartConfidence,
-      nmsRadius,
       videoWidth,
       videoHeight,
       showVideo,
@@ -136,42 +137,17 @@ export default class PoseNet extends React.Component {
 
     const poseDetectionFrameInner = async () => {
       let poses = [];
+      const estimationConfig = {flipHorizontal: true};
+      
+      poses = await net.estimatePoses(video, false);
 
-      // 單人姿勢估計or多人姿勢估計(採用單人)
-      switch (algorithm) {
-        case 'single-pose':
-
-          const pose = await net.estimateSinglePose(
-            video,
-            imageScaleFactor,
-            flipHorizontal,
-            outputStride
-          )
-
-          poses.push(pose)
-
-          break
-        case 'multi-pose':
-
-          poses = await net.estimateMultiplePoses(
-            video,
-            imageScaleFactor,
-            flipHorizontal,
-            outputStride,
-            maxPoseDetections,
-            minPartConfidence,
-            nmsRadius
-          )
-
-          break
-      }
 
       ctx.clearRect(0, 0, videoWidth, videoHeight);
 
       if (showVideo) {
         ctx.save()
-        ctx.scale(-1, 1)
-        ctx.translate(-videoWidth, 0)
+        // ctx.scale(-1, 1)
+        // ctx.translate(-videoWidth, 0)
         ctx.drawImage(video, 0, 0, videoWidth, videoHeight)
         ctx.restore()
       }
@@ -181,7 +157,7 @@ export default class PoseNet extends React.Component {
       // scores
       poses.forEach(({ score, keypoints }) => {
         if (score >= minPoseConfidence) {
-          // 畫出各部位的姿勢估計
+          //畫出各部位的姿勢估計
           if (showPoints) {
             drawKeypoints(keypoints, minPartConfidence, skeletonColor, ctx);
           }
@@ -191,7 +167,6 @@ export default class PoseNet extends React.Component {
           // 進行指定運動分析
           this.ExerciseAnalyze(keypoints, minPartConfidence);
           this.startRestCountdown();
-
         }
 
       })
@@ -207,26 +182,38 @@ export default class PoseNet extends React.Component {
     this.setState({ exerciseType });
     const sequence = this.state.state_sequence;
     sequence.length = 0
-    this.setState({ exerciseStage: 'None', correctCount: 0, incorrectCount: 0, ExerciseError: false, currentSet: 1 });
+    this.setState({ exerciseStage: 'None', correctCount: 0, incorrectCount: 0, ExerciseError: false, currentSet: 1, readyForm:false });
   };
 
   ExerciseAnalyze = (keypoints, minPartConfidence) => {
     const { exerciseType } = this.state;
     const currentStage = this.state.exerciseStage; // 動作狀態
     const sequence = this.state.state_sequence; // 狀態list
+    const rightKneeIndex = 26;
+    const rightHipIndex = 24;
+    const rightAnkleIndex = 28;
+    const rightWristIndex = 16;
+    const rightElbowIndex = 14;
+    const rightShoulderIndex = 12;
+
+
+    /*
+    這部分目前測試中直接修改前端DOM顯示feedback，
+    預計把feedback存入state方便前後端連接
+    */
+    const feedbackElement = document.getElementById('feedback');
+    const squatDepthElement = document.getElementById('squatDepth');
 
     // 動作分析
     switch(exerciseType) {
       case 'squat':
         // 深蹲動作分析
-        const rightKneeIndex = 14;
-        const rightHipIndex = 12;
-        const ankleIndex = 16;
-        const rightKnee = keypoints[rightKneeIndex].position;
-        const rightHip = keypoints[rightHipIndex].position;
-        const ankle = keypoints[ankleIndex].position;
+
+        const rightKnee = keypoints[rightKneeIndex];
+        const rightHip = keypoints[rightHipIndex];
+        const ankle = keypoints[rightAnkleIndex];
         
-        const squatDepthElement = document.getElementById('squatDepth');
+
 
         // 判斷當前畫面中是否抓到膝蓋和髖部
         if(keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence){
@@ -294,41 +281,128 @@ export default class PoseNet extends React.Component {
             sequence.shift(); 
           }
 
-
+          console.log(currentStage);
           this.setState({ state_sequence: sequence});
         }
 
         // 判斷動作過程中膝蓋是否超過腳趾
-        if(keypoints[ankleIndex].score >= minPartConfidence){
+        if(keypoints[rightAnkleIndex].score >= minPartConfidence){
           const ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
-          const ankleAngleElement = document.getElementById('ankleAngle');
-          //const kneeangleElement = document.getElementById('kneeAngle');
-          // Test
-          //kneeangleElement.innerText = `Ankle to Knee Angle: ${ankleAngle.toFixed(2)}°`;
 
           if(Math.abs(ankleAngle) > 30){
             // 腳踝膝蓋連線與垂直線夾角超過30度時判斷動作錯誤
             this.setState({ ExerciseError: true });
-            ankleAngleElement.innerText = `膝蓋超過腳趾了`;              
+            feedbackElement.innerText = `膝蓋超過腳趾了`;              
           }
           else{
-            ankleAngleElement.innerText = ``; 
+            feedbackElement.innerText = ``; 
           }
         }     
 
         break
       case 'pushup':
         // 伏地挺身分析
+        if (keypoints[rightWristIndex].score >= minPartConfidence &&
+            keypoints[rightElbowIndex].score >= minPartConfidence &&
+            keypoints[rightShoulderIndex].score >= minPartConfidence &&
+            keypoints[rightKneeIndex].score >= minPartConfidence &&
+            keypoints[rightHipIndex].score >= minPartConfidence
+          ) {
+            const rightWrist = keypoints[rightWristIndex];
+            const rightElbow = keypoints[rightElbowIndex];
+            const rightShoulder = keypoints[rightShoulderIndex];
+            const rightHip = keypoints[rightKneeIndex];
+            const rightKnee = keypoints[rightKneeIndex];
 
+            const armAngle = Math.abs(
+              (Math.atan2(rightWrist.y - rightElbow.y, rightWrist.x - rightElbow.x) -
+                Math.atan2(rightShoulder.y - rightElbow.y, rightShoulder.x - rightElbow.x)) *
+                (180 / Math.PI)
+            );
+
+            const shoulderAngle = Math.abs(
+              (Math.atan2(rightElbow.y - rightShoulder.y, rightElbow.x - rightShoulder.x) -
+                Math.atan2(rightHip.y - rightShoulder.y, rightHip.x - rightShoulder.x)) *
+                (180 / Math.PI)
+            );
+
+            const hipAngle = 180 - Math.abs( 
+              (Math.atan2(rightShoulder.y - rightHip.y, rightShoulder.x - rightHip.x) -
+                Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x)) *
+                (180 / Math.PI)
+            );
+
+            console.log(hipAngle);
+
+            if(armAngle > 160 && shoulderAngle > 40 && hipAngle > 165){
+              this.setState({ readyForm: true });
+            }
+
+            if(this.state.readyForm) {
+              if(armAngle > 160){
+                if(currentStage !== 's1') {
+                  this.setState({ exerciseStage: 's1' }, () => {
+                    if (
+                      sequence.length === 3 &&
+                      sequence[0] === 's2' &&
+                      sequence[1] === 's3' &&
+                      sequence[2] === 's2'
+                    ) {
+                      // 過程中有動作錯誤則增加不正確次數
+                      if (this.state.ExerciseError) {
+                        this.setState(prevState => ({
+                          incorrectCount: prevState.incorrectCount + 1
+                        }));
+                      } else {
+                        this.setState(prevState => ({
+                          correctCount: prevState.correctCount + 1
+                        }));
+                      }
+                      // 清空動作錯誤
+                      this.setState({ ExerciseError: false});
+                    }
     
+                    sequence.length = 0;
+                  });
+                }
+              }
+              else if(armAngle > 100 && armAngle <= 145){
+                // 狀態s2
+                if (currentStage !== 's2') {
+                  this.setState({ exerciseStage: 's2' }, () => {
+              
+                    sequence.push('s2');
+                  });
+                }
+              }
+              else if(armAngle <= 90){
+                // 狀態s3
+                if (currentStage !== 's3') {
+                  this.setState({ exerciseStage: 's3' }, () => {
+              
+                    sequence.push('s3');
+                  });
+                }
+              }
 
-
+              if(hipAngle < 160){
+                this.setState({ ExerciseError: true}, () => {
+                  feedbackElement.innerText = `注意下半身姿勢`;
+                });
+              }
+              else{
+                feedbackElement.innerText = ``
+              }
+    
+              // 控制list長度
+              if (sequence.length > 3) {
+                sequence.shift(); 
+              }
+            }
+          }
         break
       case 'bicep-curl':
         // 二頭彎舉分析
-        const rightWristIndex = 10;
-        const rightElbowIndex = 8;
-        const rightShoulderIndex = 6;
 
         if (
           keypoints[rightWristIndex].score >= minPartConfidence &&
@@ -336,9 +410,9 @@ export default class PoseNet extends React.Component {
           keypoints[rightShoulderIndex].score >= minPartConfidence
         ) {
           // 獲取右手腕、右肘和右肩的位置
-          const rightWrist = keypoints[rightWristIndex].position;
-          const rightElbow = keypoints[rightElbowIndex].position;
-          const rightShoulder = keypoints[rightShoulderIndex].position;
+          const rightWrist = keypoints[rightWristIndex];
+          const rightElbow = keypoints[rightElbowIndex];
+          const rightShoulder = keypoints[rightShoulderIndex];
     
           // 計算手臂抬起角度
           const armAngle = Math.abs(
@@ -346,6 +420,8 @@ export default class PoseNet extends React.Component {
               Math.atan2(rightShoulder.y - rightElbow.y, rightShoulder.x - rightElbow.x)) *
               (180 / Math.PI)
           );
+          
+          console.log(armAngle.toFixed(1));
 
           if (armAngle >= 140){
             if (currentStage !== 's1') {
@@ -402,19 +478,18 @@ export default class PoseNet extends React.Component {
 
           this.setState({ state_sequence: sequence});
 
-          const shoulderToElbowLineAngle = Math.abs(
+          const shoulderAngle = Math.abs(
             (Math.atan2(rightElbow.y - rightShoulder.y, rightElbow.x - rightShoulder.x) - Math.PI / 2) *
               (180 / Math.PI)
           );
-          const ankleAngleElement = document.getElementById('ankleAngle');
 
-          if(shoulderToElbowLineAngle > 40){
+          if(shoulderAngle > 40){
             this.setState({ ExerciseError: true}, () => {
-              ankleAngleElement.innerText = `注意上臂位置`;
+              feedbackElement.innerText = `注意上臂位置`;
             });
           }
           else{
-            ankleAngleElement.innerText = ``;
+            feedbackElement.innerText = ``;
           }
         }
         break
@@ -425,14 +500,14 @@ export default class PoseNet extends React.Component {
   }
   
   startRestCountdown() {
-    const { correctCount, incorrectCount, currentSet, restTimeRemaining, isResting, exerciseType } = this.state;
+    const { correctCount, incorrectCount, isResting, exerciseType } = this.state;
     const { repsPerSet, totalSets } = this.props;
 
     // 檢查是否達到組數，並且不在休息狀態中
     if (!isResting && correctCount + incorrectCount >= repsPerSet) {
       console.log("helllo");
       // 開始進入組間休息時間
-      this.setState({ isResting: true, restTimeRemaining: 90 });
+      this.setState({ isResting: true, restTimeRemaining: 90, readyForm:false });
 
       // 停止運動分析
       this.switchExerciseType('rest');

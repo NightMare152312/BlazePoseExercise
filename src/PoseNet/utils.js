@@ -1,4 +1,7 @@
 import * as posenet from '@tensorflow-models/posenet';
+import * as poseDetection from '@tensorflow-models/pose-detection';
+
+const model = poseDetection.SupportedModels.BlazePose;
 
 function isAndroid() {
   return /Android/i.test(navigator.userAgent);
@@ -15,7 +18,7 @@ export function isMobile() {
 export function drawKeypoints(keypoints, minConfidence, skeletonColor, ctx, scale = 1) {
   keypoints.forEach(keypoint => {
     if (keypoint.score >= minConfidence) {
-      const { y, x } = keypoint.position
+      const { y, x } = keypoint
       ctx.beginPath()
       ctx.arc(x * scale, y * scale, 3, 0, 2 * Math.PI)
       ctx.fillStyle = skeletonColor
@@ -38,13 +41,18 @@ function drawSegment([ay, ax], [by, bx], color, lineWidth, scale, ctx) {
 }
 
 export function drawSkeleton(keypoints, minConfidence, color, lineWidth, ctx, scale = 1) {
-  const adjacentKeyPoints = posenet.getAdjacentKeyPoints(keypoints, minConfidence)
+  // const adjacentKeyPoints = posenet.getAdjacentKeyPoints(keypoints, minConfidence)
+  const adjacentKeyPoints = poseDetection.util.getAdjacentPairs(model)
 
-  adjacentKeyPoints.forEach(keypoints => {
-    drawSegment(
-      toTuple(keypoints[0].position),
-      toTuple(keypoints[1].position),
-      color, lineWidth, scale, ctx
-    )
+  adjacentKeyPoints.forEach(([i,j]) => {
+    const kp1 = keypoints[i];
+    const kp2 = keypoints[j];
+    if(kp1.score >= minConfidence && kp2.score >= minConfidence){
+      drawSegment(
+        toTuple(kp1),
+        toTuple(kp2),
+        color, lineWidth, scale, ctx
+      )      
+    } 
   })
 }
