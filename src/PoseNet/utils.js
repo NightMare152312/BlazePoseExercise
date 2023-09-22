@@ -15,8 +15,11 @@ export function isMobile() {
   return isAndroid() || isiOS();
 }
 
-export function drawKeypoints(keypoints, minConfidence, skeletonColor, ctx, scale = 1) {
-  keypoints.forEach(keypoint => {
+export function drawKeypoints(keypoints, minConfidence, skeletonColor, ctx, scale = 1, skipIndex) {
+  keypoints.forEach((keypoint, index) => {
+    if(skipIndex.includes(index)){
+      return;
+    }
     if (keypoint.score >= minConfidence) {
       const { y, x } = keypoint
       ctx.beginPath()
@@ -40,11 +43,15 @@ function drawSegment([ay, ax], [by, bx], color, lineWidth, scale, ctx) {
   ctx.stroke()
 }
 
-export function drawSkeleton(keypoints, minConfidence, color, lineWidth, ctx, scale = 1) {
+export function drawSkeleton(keypoints, minConfidence, color, lineWidth, ctx, scale = 1, skipIndex) {
   // const adjacentKeyPoints = posenet.getAdjacentKeyPoints(keypoints, minConfidence)
   const adjacentKeyPoints = poseDetection.util.getAdjacentPairs(model)
 
   adjacentKeyPoints.forEach(([i,j]) => {
+    if (skipIndex.includes(i) || skipIndex.includes(j)) {
+      return;
+    }
+
     const kp1 = keypoints[i];
     const kp2 = keypoints[j];
     if(kp1.score >= minConfidence && kp2.score >= minConfidence){

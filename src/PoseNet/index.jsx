@@ -25,8 +25,9 @@ export default class PoseNet extends React.Component {
     skeletonColor: 'aqua',
     skeletonLineWidth: 2,
     loadingText: 'Loading pose detector...',
-    repsPerSet: 10, // 每組數量，預設10
-    totalSets: 3  // 總組數，預設3
+    repsPerSet: 5, // 每組數量，預設10
+    totalSets: 3,  // 總組數，預設3
+    skipIndex: [0,1,2,3,4,5,6,7,8,9,10]
   }
 
   constructor(props) {
@@ -34,9 +35,12 @@ export default class PoseNet extends React.Component {
     this.state = { 
       loading: true,
       exerciseStage: 'None',     // 當前動作狀態
+      feedback: '',
       state_sequence: [],     // 動作狀態列表,正確順序為[s2,s3,s2]
       correctCount: 0,   // 正確動作次數
       incorrectCount: 0, // 錯誤動作次數
+      totalCount: 0,
+      totalCorrectCount: 0,
       ExerciseError: false,
       exerciseType: 'squat',
       currentSet: 1,            // 當前組數
@@ -130,6 +134,7 @@ export default class PoseNet extends React.Component {
       showSkeleton,
       skeletonColor,
       skeletonLineWidth,
+      skipIndex
     } = this.props
 
     const net = this.net
@@ -137,7 +142,6 @@ export default class PoseNet extends React.Component {
 
     const poseDetectionFrameInner = async () => {
       let poses = [];
-      const estimationConfig = {flipHorizontal: true};
       
       poses = await net.estimatePoses(video, false);
 
@@ -159,10 +163,10 @@ export default class PoseNet extends React.Component {
         if (score >= minPoseConfidence) {
           //畫出各部位的姿勢估計
           if (showPoints) {
-            drawKeypoints(keypoints, minPartConfidence, skeletonColor, ctx);
+            drawKeypoints(keypoints, minPartConfidence, skeletonColor, ctx, 1, skipIndex);
           }
           if (showSkeleton) {
-            drawSkeleton(keypoints, minPartConfidence, skeletonColor, skeletonLineWidth, ctx);
+            drawSkeleton(keypoints, minPartConfidence, skeletonColor, skeletonLineWidth, ctx, 1, skipIndex);
           }
           // 進行指定運動分析
           this.ExerciseAnalyze(keypoints, minPartConfidence);
@@ -182,7 +186,7 @@ export default class PoseNet extends React.Component {
     this.setState({ exerciseType });
     const sequence = this.state.state_sequence;
     sequence.length = 0
-    this.setState({ exerciseStage: 'None', correctCount: 0, incorrectCount: 0, ExerciseError: false, currentSet: 1, readyForm:false });
+    this.setState({ exerciseStage: 'None', correctCount: 0, incorrectCount: 0, totalCount: 0, ExerciseError: false, currentSet: 1, readyForm:false });
   };
 
   ExerciseAnalyze = (keypoints, minPartConfidence) => {
@@ -245,7 +249,6 @@ export default class PoseNet extends React.Component {
                   // 清空動作錯誤
                   this.setState({ ExerciseError: false});
                 }
-
                 sequence.length = 0;
               });
             }
@@ -265,42 +268,54 @@ export default class PoseNet extends React.Component {
                 sequence.push('s3');
               });
             }
-            // 處於狀態s3時下蹲角度超過95度判斷動作錯誤
-            if(kneeAngle > 95){
-              // 顯示動作錯誤提醒並記錄
-              this.setState({ ExerciseError: true });
-              squatDepthElement.innerText = `蹲得太下去了`;   
-            }
-            else{
-              squatDepthElement.innerText = ``;
+          }
+
+          // 處於狀態s3時下蹲角度超過95度判斷動作錯誤
+          if(kneeAngle > 105){
+            // 顯示動作錯誤提醒並記錄
+            if(!this.state.feedback.includes('蹲太下去了!')){
+              this.setState(prevState => ({
+                ExerciseError: true,
+                feedback: prevState.feedback + '蹲太下去了!, '
+              }));              
             }
           }
+          else{
+            this.setState(prevState => ({
+              feedback: prevState.feedback.replace('蹲太下去了!, ', '') // 移除動作錯誤回饋
+            }));
+          }
+
+          // 判斷動作過程中膝蓋是否超過腳趾
+          if(keypoints[rightAnkleIndex].score >= minPartConfidence){
+            const ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
+
+            if(Math.abs(ankleAngle) > 30){
+              // 腳踝膝蓋連線與垂直線夾角超過30度時判斷動作錯誤
+              if(!this.state.feedback.includes('膝蓋超過腳趾!')){
+                this.setState(prevState => ({
+                  ExerciseError: true,
+                  feedback: prevState.feedback + '膝蓋超過腳趾!, '
+                }));                        
+              }
+            }
+            else{
+              this.setState(prevState => ({
+                feedback: prevState.feedback.replace('膝蓋超過腳趾!, ', '') // 移除動作錯誤回饋
+              }));
+            }
+          }    
           
           // 控制list長度
           if (sequence.length > 3) {
             sequence.shift(); 
           }
 
-          console.log(currentStage);
           this.setState({ state_sequence: sequence});
-        }
-
-        // 判斷動作過程中膝蓋是否超過腳趾
-        if(keypoints[rightAnkleIndex].score >= minPartConfidence){
-          const ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
-
-          if(Math.abs(ankleAngle) > 30){
-            // 腳踝膝蓋連線與垂直線夾角超過30度時判斷動作錯誤
-            this.setState({ ExerciseError: true });
-            feedbackElement.innerText = `膝蓋超過腳趾了`;              
-          }
-          else{
-            feedbackElement.innerText = ``; 
-          }
-        }     
+        } 
 
         break
-      case 'pushup':
+      case 'push_up':
         // 伏地挺身分析
         if (keypoints[rightWristIndex].score >= minPartConfidence &&
             keypoints[rightElbowIndex].score >= minPartConfidence &&
@@ -332,7 +347,6 @@ export default class PoseNet extends React.Component {
                 (180 / Math.PI)
             );
 
-            console.log(hipAngle);
 
             if(armAngle > 160 && shoulderAngle > 40 && hipAngle > 165){
               this.setState({ readyForm: true });
@@ -401,7 +415,7 @@ export default class PoseNet extends React.Component {
             }
           }
         break
-      case 'bicep-curl':
+      case 'bicep_curl':
         // 二頭彎舉分析
 
         if (
@@ -421,7 +435,6 @@ export default class PoseNet extends React.Component {
               (180 / Math.PI)
           );
           
-          console.log(armAngle.toFixed(1));
 
           if (armAngle >= 140){
             if (currentStage !== 's1') {
@@ -484,12 +497,13 @@ export default class PoseNet extends React.Component {
           );
 
           if(shoulderAngle > 40){
-            this.setState({ ExerciseError: true}, () => {
-              feedbackElement.innerText = `注意上臂位置`;
-            });
+            this.setState({
+              ExerciseError: true,
+              feedback: '注意上臂位置'
+            });   
           }
           else{
-            feedbackElement.innerText = ``;
+            this.setState({ feedback: ''}); 
           }
         }
         break
@@ -500,18 +514,16 @@ export default class PoseNet extends React.Component {
   }
   
   startRestCountdown() {
-    const { correctCount, incorrectCount, isResting, exerciseType } = this.state;
+    const { correctCount, incorrectCount, isResting, exerciseType, totalCount, totalCorrectCount } = this.state;
     const { repsPerSet, totalSets } = this.props;
 
     // 檢查是否達到組數，並且不在休息狀態中
     if (!isResting && correctCount + incorrectCount >= repsPerSet) {
-      console.log("helllo");
       // 開始進入組間休息時間
-      this.setState({ isResting: true, restTimeRemaining: 90, readyForm:false });
+      this.setState({ isResting: true, restTimeRemaining: 10, readyForm:false, totalCount: totalCount + correctCount + incorrectCount, totalCorrectCount: totalCorrectCount + correctCount });
 
       // 停止運動分析
       this.switchExerciseType('rest');
-      // 將 correctCount 和 incorrectCount 歸零
       this.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
       // 定時器，每秒更新休息時間
       const restTimer = setInterval(() => {
@@ -519,6 +531,7 @@ export default class PoseNet extends React.Component {
           // 檢查休息時間是否結束
           if (this.state.restTimeRemaining === 0) {
             clearInterval(restTimer); // 停止定時器
+
             this.setState(prevState => ({ 
               currentSet: prevState.currentSet + 1,
               isResting: false,   // 結束休息狀態
@@ -528,9 +541,8 @@ export default class PoseNet extends React.Component {
                 // 繼續進行運動分析
                 this.switchExerciseType(exerciseType);
               } else {
-                // 停止運動分析
-                this.switchExerciseType('rest');
-                this.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
+                // 停止運動分析並回傳結果
+                this.sendAnalyzeResult
               }
             });
           }
@@ -538,23 +550,53 @@ export default class PoseNet extends React.Component {
       }, 1000);
     }
   }
+
+  sendAnalyzeResult = () => {
+    const { correctCount, incorrectCount, totalCount, totalCorrectCount, exerciseType } = this.state;
+    const count = totalCount + incorrectCount + correctCount;
+    const accuracy = totalCorrectCount / count; 
+
+    const analysisResult = {
+      accuracy: accuracy,
+      count: count,
+      type: exerciseType
+    };
+
+    fetch('http://140.117.71.159:8000/api/exercises/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(analysisResult)
+    })
+      .then(response => response.json())
+      .catch(error => {
+        // 處理錯誤
+        console.error('POST發生錯誤:',error);
+      });
+
+    this.switchExerciseType('rest');
+    this.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
+  };
   
 
   // 輸出組件
   render() {
-    const { currentSet, isResting, restTimeRemaining, incorrectCount, correctCount, exerciseStage  } = this.state;
+    const { currentSet, isResting, restTimeRemaining, incorrectCount, correctCount, exerciseStage, feedback  } = this.state;
     const loading = this.state.loading
       ? <div className="PoseNet__loading">{ this.props.loadingText }</div>
       : ''
     return (
       <div>
-        <h4>當前狀態: { exerciseStage }/正確次數: { correctCount }/不正確次數: { incorrectCount }/當前組數: {currentSet}/{isResting && <p>休息時間: {restTimeRemaining}秒</p>}</h4>
+        <p>當前狀態: { exerciseStage }/正確次數: { correctCount }/不正確次數: { incorrectCount }/當前組數: {currentSet}/{isResting && <p>休息: {restTimeRemaining}秒</p>}</p>
         {/* 切換深蹲分析的按鈕 */}
         <button onClick={() => this.switchExerciseType('squat')}>深蹲</button>
         {/* 切換伏地挺身分析的按鈕 */}
-        <button onClick={() => this.switchExerciseType('pushup')}>伏地挺身</button>
+        <button onClick={() => this.switchExerciseType('push_up')}>伏地挺身</button>
         {/* 切換二頭彎舉分析的按鈕 */}
-        <button onClick={() => this.switchExerciseType('bicep-curl')}>二頭彎舉</button>
+        <button onClick={() => this.switchExerciseType('bicep_curl')}>二頭彎舉</button>
+        <button onClick={this.sendAnalyzeResult}>停止分析</button>
+        <span>動作建議:{ feedback }</span>
         <div className="PoseNet">
           { loading }
           <video playsInline ref={ this.getVideo }></video>
