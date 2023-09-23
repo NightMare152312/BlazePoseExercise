@@ -39,10 +39,8 @@ export default class PoseNet extends React.Component {
       state_sequence: [],     // 動作狀態列表,正確順序為[s2,s3,s2]
       correctCount: 0,   // 正確動作次數
       incorrectCount: 0, // 錯誤動作次數
-      totalCount: 0,
-      totalCorrectCount: 0,
       ExerciseError: false,
-      exerciseType: 'squat',
+      exerciseType: 'none',
       currentSet: 1,            // 當前組數
       restTimeRemaining: 0,     // 組間休息剩餘時間 (秒)
       isResting: false,         // 是否正在進行組間休息
@@ -64,7 +62,7 @@ export default class PoseNet extends React.Component {
     const detectorConfig = {
       runtime: 'tfjs',
       enableSmoothing: true,
-      modelType: 'lite'
+      modelType: 'full'
     };
     this.net = await poseDetection.createDetector(model, detectorConfig);
     try {
@@ -182,22 +180,20 @@ export default class PoseNet extends React.Component {
     poseDetectionFrameInner()
   }
 
-  switchExerciseType = (exerciseType, resetExercise = true) => {
+  switchExerciseType = (exerciseType, resetCount = true) => {
     this.setState({ exerciseType });
     const sequence = this.state.state_sequence;
     sequence.length = 0
-    if(resetExercise){
+    if(resetCount){
       this.setState({ 
+        correctCount: 0,
+        incorrectCount: 0,
         currentSet: 1,
-        totalCount: 0,
-        totalCorrectCount: 0
       });
     }
 
     this.setState({
       exerciseStage: 'None',
-      correctCount: 0,
-      incorrectCount: 0,
       ExerciseError: false,
       readyForm:false
     });
@@ -214,13 +210,18 @@ export default class PoseNet extends React.Component {
     const rightElbowIndex = 14;
     const rightShoulderIndex = 12;
 
+    // 若正在休息則返回
+    if(this.state.isResting){
+      return;
+    }
+
 
     /*
     這部分目前測試中直接修改前端DOM顯示feedback，
     預計把feedback存入state方便前後端連接
     */
     const feedbackElement = document.getElementById('feedback');
-    const squatDepthElement = document.getElementById('squatDepth');
+    // const squatDepthElement = document.getElementById('squatDepth');
 
     // 動作分析
     switch(exerciseType) {
@@ -528,17 +529,15 @@ export default class PoseNet extends React.Component {
   }
   
   startRestCountdown() {
-    const { correctCount, incorrectCount, isResting, exerciseType, totalCount, totalCorrectCount } = this.state;
+    const { correctCount, incorrectCount, isResting, exerciseType, currentSet } = this.state;
     const { repsPerSet, totalSets } = this.props;
 
     // 檢查是否達到組數，並且不在休息狀態中
-    if (!isResting && correctCount + incorrectCount >= repsPerSet) {
+    if (!isResting && correctCount + incorrectCount >= repsPerSet * currentSet) {
       // 開始進入組間休息時間
-      this.setState({ isResting: true, restTimeRemaining: 10, readyForm:false, totalCount: totalCount + correctCount + incorrectCount, totalCorrectCount: totalCorrectCount + correctCount });
+      this.setState({ isResting: true, restTimeRemaining: 10, readyForm:false });
 
-      // 停止運動分析
-      this.switchExerciseType('rest', false);
-      this.setState({ correctCount: 0, incorrectCount: 0 });
+      this.switchExerciseType(exerciseType, false);
       // 定時器，每秒更新休息時間
       const restTimer = setInterval(() => {
         this.setState(prevState => ({ restTimeRemaining: prevState.restTimeRemaining - 1 }), () => {
@@ -548,15 +547,14 @@ export default class PoseNet extends React.Component {
 
             this.setState(prevState => ({ 
               currentSet: prevState.currentSet + 1,
-              isResting: false,   // 結束休息狀態
             }), () => {
               // 檢查是否達到總組數
               if (this.state.currentSet <= totalSets) {
                 // 繼續進行運動分析
-                this.switchExerciseType(exerciseType, false);
+                this.setState({ isResting: false });
               } else {
                 // 停止運動分析並回傳結果
-                this.sendAnalyzeResult()
+                this.sendAnalyzeResult(exerciseType)
               }
             });
           }
@@ -566,9 +564,9 @@ export default class PoseNet extends React.Component {
   }
 
   sendAnalyzeResult = () => {
-    const { correctCount, incorrectCount, totalCount, totalCorrectCount, exerciseType } = this.state;
-    const count = totalCount + incorrectCount + correctCount;
-    const accuracy = totalCorrectCount / count; 
+    const { correctCount, incorrectCount, exerciseType } = this.state;
+    const count = incorrectCount + correctCount;
+    const accuracy = correctCount / count;
 
     const analysisResult = {
       accuracy: accuracy,
@@ -589,13 +587,13 @@ export default class PoseNet extends React.Component {
         console.error('POST發生錯誤:',error);
       });
 
-    this.switchExerciseType('rest');
+    this.switchExerciseType('none');
   };
   
 
   // 輸出組件
   render() {
-    const { currentSet, isResting, restTimeRemaining, incorrectCount, correctCount, exerciseStage, feedback  } = this.state;
+    const { currentSet, isResting, restTimeRemaining, incorrectCount, correctCount, exerciseStage, feedback, exerciseType  } = this.state;
     const loading = this.state.loading
       ? <div className="PoseNet__loading">{ this.props.loadingText }</div>
       : ''
