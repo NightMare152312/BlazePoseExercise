@@ -182,11 +182,25 @@ export default class PoseNet extends React.Component {
     poseDetectionFrameInner()
   }
 
-  switchExerciseType = (exerciseType) => {
+  switchExerciseType = (exerciseType, resetExercise = true) => {
     this.setState({ exerciseType });
     const sequence = this.state.state_sequence;
     sequence.length = 0
-    this.setState({ exerciseStage: 'None', correctCount: 0, incorrectCount: 0, totalCount: 0, ExerciseError: false, currentSet: 1, readyForm:false });
+    if(resetExercise){
+      this.setState({ 
+        currentSet: 1,
+        totalCount: 0,
+        totalCorrectCount: 0
+      });
+    }
+
+    this.setState({
+      exerciseStage: 'None',
+      correctCount: 0,
+      incorrectCount: 0,
+      ExerciseError: false,
+      readyForm:false
+    });
   };
 
   ExerciseAnalyze = (keypoints, minPartConfidence) => {
@@ -523,8 +537,8 @@ export default class PoseNet extends React.Component {
       this.setState({ isResting: true, restTimeRemaining: 10, readyForm:false, totalCount: totalCount + correctCount + incorrectCount, totalCorrectCount: totalCorrectCount + correctCount });
 
       // 停止運動分析
-      this.switchExerciseType('rest');
-      this.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
+      this.switchExerciseType('rest', false);
+      this.setState({ correctCount: 0, incorrectCount: 0 });
       // 定時器，每秒更新休息時間
       const restTimer = setInterval(() => {
         this.setState(prevState => ({ restTimeRemaining: prevState.restTimeRemaining - 1 }), () => {
@@ -539,10 +553,10 @@ export default class PoseNet extends React.Component {
               // 檢查是否達到總組數
               if (this.state.currentSet <= totalSets) {
                 // 繼續進行運動分析
-                this.switchExerciseType(exerciseType);
+                this.switchExerciseType(exerciseType, false);
               } else {
                 // 停止運動分析並回傳結果
-                this.sendAnalyzeResult
+                this.sendAnalyzeResult()
               }
             });
           }
@@ -576,7 +590,6 @@ export default class PoseNet extends React.Component {
       });
 
     this.switchExerciseType('rest');
-    this.setState({ correctSquatCount: 0, incorrectSquatCount: 0 });
   };
   
 
@@ -588,7 +601,7 @@ export default class PoseNet extends React.Component {
       : ''
     return (
       <div>
-        <p>當前狀態: { exerciseStage }/正確次數: { correctCount }/不正確次數: { incorrectCount }/當前組數: {currentSet}/{isResting && <p>休息: {restTimeRemaining}秒</p>}</p>
+        <p>當前狀態: { exerciseStage }/正確次數: { correctCount }/不正確次數: { incorrectCount }/當前組數: {currentSet}/{isResting && <span>休息: {restTimeRemaining}秒</span>}</p>
         {/* 切換深蹲分析的按鈕 */}
         <button onClick={() => this.switchExerciseType('squat')}>深蹲</button>
         {/* 切換伏地挺身分析的按鈕 */}
