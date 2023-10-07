@@ -4,6 +4,7 @@ import * as poseDetection from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs-core';
 // Register WebGL backend.
 import '@tensorflow/tfjs-backend-webgl';
+// 導入語音提示用hook
 
 export default class PoseNet extends React.Component {
 
@@ -589,6 +590,13 @@ export default class PoseNet extends React.Component {
 
     this.switchExerciseType('none');
   };
+
+  speak = (message) => {
+    const speechSynthesis = window.speechSynthesis;
+    speechSynthesis.lang = 'zh-TW';
+    const utterance = new SpeechSynthesisUtterance(message);
+    speechSynthesis.speak(utterance);
+  }
   
 
   // 輸出組件
@@ -606,6 +614,7 @@ export default class PoseNet extends React.Component {
         <button onClick={() => this.switchExerciseType('push_up')}>伏地挺身</button>
         {/* 切換二頭彎舉分析的按鈕 */}
         <button onClick={() => this.switchExerciseType('bicep_curl')}>二頭彎舉</button>
+        <button onClick={() => this.speak('測試用語音')}>測試</button>
         <button onClick={this.sendAnalyzeResult}>停止分析</button>
         <span>動作建議:{ feedback }</span>
         <div className="PoseNet">
