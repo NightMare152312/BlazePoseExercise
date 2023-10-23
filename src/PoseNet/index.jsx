@@ -264,6 +264,7 @@ export default class PoseNet extends React.Component {
                   }
                   // 清空動作錯誤
                   this.setState({ ExerciseError: false});
+                  this.setState({ feedback: ''}); 
                 }
                 sequence.length = 0;
               });
@@ -293,13 +294,9 @@ export default class PoseNet extends React.Component {
               this.setState(prevState => ({
                 ExerciseError: true,
                 feedback: prevState.feedback + '蹲太下去了!, '
-              }));              
+              }));
+              this.speak('蹲太下去了');
             }
-          }
-          else{
-            this.setState(prevState => ({
-              feedback: prevState.feedback.replace('蹲太下去了!, ', '') // 移除動作錯誤回饋
-            }));
           }
 
           // 判斷動作過程中膝蓋是否超過腳趾
@@ -312,13 +309,9 @@ export default class PoseNet extends React.Component {
                 this.setState(prevState => ({
                   ExerciseError: true,
                   feedback: prevState.feedback + '膝蓋超過腳趾!, '
-                }));                        
+                }));
+                this.speak('膝蓋超過腳趾');
               }
-            }
-            else{
-              this.setState(prevState => ({
-                feedback: prevState.feedback.replace('膝蓋超過腳趾!, ', '') // 移除動作錯誤回饋
-              }));
             }
           }    
           
@@ -390,6 +383,7 @@ export default class PoseNet extends React.Component {
                       }
                       // 清空動作錯誤
                       this.setState({ ExerciseError: false});
+                      this.setState({ feedback: ''}); 
                     }
     
                     sequence.length = 0;
@@ -415,13 +409,12 @@ export default class PoseNet extends React.Component {
                 }
               }
 
-              if(hipAngle < 160){
-                this.setState({ ExerciseError: true}, () => {
-                  feedbackElement.innerText = `注意下半身姿勢`;
+              if(hipAngle < 160 && !this.state.ExerciseError){
+                this.setState({
+                  ExerciseError: true,
+                  feedback: '注意下半身姿勢'
                 });
-              }
-              else{
-                feedbackElement.innerText = ``
+                this.speak('注意下半身姿勢');
               }
     
               // 控制list長度
@@ -474,6 +467,7 @@ export default class PoseNet extends React.Component {
                   }
                   // 清空動作錯誤
                   this.setState({ ExerciseError: false});
+                  this.setState({ feedback: ''}); 
                 }
 
                 sequence.length = 0;
@@ -512,14 +506,12 @@ export default class PoseNet extends React.Component {
               (180 / Math.PI)
           );
 
-          if(shoulderAngle > 40){
+          if(shoulderAngle > 40 && !this.state.ExerciseError){
             this.setState({
               ExerciseError: true,
               feedback: '注意上臂位置'
-            });   
-          }
-          else{
-            this.setState({ feedback: ''}); 
+            });
+            this.speak('注意上臂位置');
           }
         }
         break
@@ -601,7 +593,7 @@ export default class PoseNet extends React.Component {
 
   // 輸出組件
   render() {
-    const { currentSet, isResting, restTimeRemaining, incorrectCount, correctCount, exerciseStage, feedback, exerciseType  } = this.state;
+    const { currentSet, isResting, restTimeRemaining, incorrectCount, correctCount, exerciseStage, feedback  } = this.state;
     const loading = this.state.loading
       ? <div className="PoseNet__loading">{ this.props.loadingText }</div>
       : ''
