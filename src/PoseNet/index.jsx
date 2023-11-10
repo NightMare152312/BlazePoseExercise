@@ -201,27 +201,49 @@ export default class PoseNet extends React.Component {
   };
 
   ExerciseAnalyze = (keypoints, minPartConfidence) => {
-    const { exerciseType } = this.state;
-    const currentStage = this.state.exerciseStage; // 動作狀態
-    const sequence = this.state.state_sequence; // 狀態list
-    const rightKneeIndex = 26;
-    const rightHipIndex = 24;
-    const rightAnkleIndex = 28;
-    const rightWristIndex = 16;
-    const rightElbowIndex = 14;
-    const rightShoulderIndex = 12;
 
     // 若正在休息則返回
     if(this.state.isResting){
       return;
     }
 
+    const { exerciseType } = this.state;
+    const currentStage = this.state.exerciseStage; // 動作狀態
+    const sequence = this.state.state_sequence; // 狀態list
+    let rightIndex;
+
+    const rightEarIndex = 8;
+    const leftEarIndex = 7;
+
+    let kneeKeypoint;
+    let hipKeypoint;
+    let ankleKeypoint;
+    let wristKeypoint;
+    let elbowKeypoint;
+    let shoulderKeypoint;
+
+    if(keypoints[rightEarIndex].score > keypoints[leftEarIndex].score){
+      kneeKeypoint = keypoints[26];
+      hipKeypoint = keypoints[24];
+      ankleKeypoint = keypoints[28];
+      wristKeypoint = keypoints[16];
+      elbowKeypoint = keypoints[14];
+      shoulderKeypoint = keypoints[12];
+    }
+    else{
+      kneeKeypoint = keypoints[25];
+      hipKeypoint = keypoints[23];
+      ankleKeypoint = keypoints[27];
+      wristKeypoint = keypoints[15];
+      elbowKeypoint = keypoints[13];
+      shoulderKeypoint = keypoints[11];
+    }
 
     /*
     這部分目前測試中直接修改前端DOM顯示feedback，
     預計把feedback存入state方便前後端連接
     */
-    const feedbackElement = document.getElementById('feedback');
+    // const feedbackElement = document.getElementById('feedback');
     // const squatDepthElement = document.getElementById('squatDepth');
 
     // 動作分析
@@ -229,16 +251,10 @@ export default class PoseNet extends React.Component {
       case 'squat':
         // 深蹲動作分析
 
-        const rightKnee = keypoints[rightKneeIndex];
-        const rightHip = keypoints[rightHipIndex];
-        const ankle = keypoints[rightAnkleIndex];
-        
-
-
         // 判斷當前畫面中是否抓到膝蓋和髖部
-        if(keypoints[rightHipIndex].score >= minPartConfidence && keypoints[rightKneeIndex].score >= minPartConfidence){
+        if(hipKeypoint.score >= minPartConfidence && kneeKeypoint.score >= minPartConfidence){
           // 計算膝髖連線與垂直線夾角
-          const kneeAngle = Math.abs((90 - Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x) * (180 / Math.PI)));
+          const kneeAngle = Math.abs((90 - Math.atan2(kneeKeypoint.y - hipKeypoint.y, kneeKeypoint.x - hipKeypoint.x) * (180 / Math.PI)));
           
           // 以膝髖連線與垂直線夾角判斷動作狀態
           // 角度<=32度為狀態s1
@@ -301,7 +317,7 @@ export default class PoseNet extends React.Component {
 
           // 判斷動作過程中膝蓋是否超過腳趾
           if(keypoints[rightAnkleIndex].score >= minPartConfidence){
-            const ankleAngle = Math.atan2(ankle.y - rightKnee.y, ankle.x - rightKnee.x) * (180 / Math.PI) - 90;
+            const ankleAngle = Math.atan2(ankleKeypoint.y - kneeKeypoint.y, ankleKeypoint.x - kneeKeypoint.x) * (180 / Math.PI) - 90;
 
             if(Math.abs(ankleAngle) > 30){
               // 腳踝膝蓋連線與垂直線夾角超過30度時判斷動作錯誤
@@ -326,33 +342,30 @@ export default class PoseNet extends React.Component {
         break
       case 'push_up':
         // 伏地挺身分析
-        if (keypoints[rightWristIndex].score >= minPartConfidence &&
-            keypoints[rightElbowIndex].score >= minPartConfidence &&
-            keypoints[rightShoulderIndex].score >= minPartConfidence &&
-            keypoints[rightKneeIndex].score >= minPartConfidence &&
-            keypoints[rightHipIndex].score >= minPartConfidence
+
+        if (wristKeypoint.score >= minPartConfidence &&
+            elbowKeypoint.score >= minPartConfidence &&
+            shoulderKeypoint.score >= minPartConfidence &&
+            kneeKeypoint.score >= minPartConfidence &&
+            hipKeypoint.score >= minPartConfidence
           ) {
-            const rightWrist = keypoints[rightWristIndex];
-            const rightElbow = keypoints[rightElbowIndex];
-            const rightShoulder = keypoints[rightShoulderIndex];
-            const rightHip = keypoints[rightKneeIndex];
-            const rightKnee = keypoints[rightKneeIndex];
+
 
             const armAngle = Math.abs(
-              (Math.atan2(rightWrist.y - rightElbow.y, rightWrist.x - rightElbow.x) -
-                Math.atan2(rightShoulder.y - rightElbow.y, rightShoulder.x - rightElbow.x)) *
+              (Math.atan2(wristKeypoint.y - elbowKeypoint.y, wristKeypoint.x - elbowKeypoint.x) -
+                Math.atan2(shoulderKeypoint.y - elbowKeypoint.y, shoulderKeypoint.x - elbowKeypoint.x)) *
                 (180 / Math.PI)
             );
 
             const shoulderAngle = Math.abs(
-              (Math.atan2(rightElbow.y - rightShoulder.y, rightElbow.x - rightShoulder.x) -
-                Math.atan2(rightHip.y - rightShoulder.y, rightHip.x - rightShoulder.x)) *
+              (Math.atan2(elbowKeypoint.y - shoulderKeypoint.y, elbowKeypoint.x - shoulderKeypoint.x) -
+                Math.atan2(hipKeypoint.y - shoulderKeypoint.y, hipKeypoint.x - shoulderKeypoint.x)) *
                 (180 / Math.PI)
             );
 
             const hipAngle = 180 - Math.abs( 
-              (Math.atan2(rightShoulder.y - rightHip.y, rightShoulder.x - rightHip.x) -
-                Math.atan2(rightKnee.y - rightHip.y, rightKnee.x - rightHip.x)) *
+              (Math.atan2(shoulderKeypoint.y - hipKeypoint, shoulderKeypoint.x - hipKeypoint.x) -
+                Math.atan2(kneeKeypoint.y - hipKeypoint.y, kneeKeypoint.x - hipKeypoint.x)) *
                 (180 / Math.PI)
             );
 
@@ -428,19 +441,14 @@ export default class PoseNet extends React.Component {
         // 二頭彎舉分析
 
         if (
-          keypoints[rightWristIndex].score >= minPartConfidence &&
-          keypoints[rightElbowIndex].score >= minPartConfidence &&
-          keypoints[rightShoulderIndex].score >= minPartConfidence
+          wristKeypoint.score >= minPartConfidence &&
+          elbowKeypoint.score >= minPartConfidence &&
+          shoulderKeypoint.score >= minPartConfidence
         ) {
-          // 獲取右手腕、右肘和右肩的位置
-          const rightWrist = keypoints[rightWristIndex];
-          const rightElbow = keypoints[rightElbowIndex];
-          const rightShoulder = keypoints[rightShoulderIndex];
-    
           // 計算手臂抬起角度
           const armAngle = Math.abs(
-            (Math.atan2(rightWrist.y - rightElbow.y, rightWrist.x - rightElbow.x) -
-              Math.atan2(rightShoulder.y - rightElbow.y, rightShoulder.x - rightElbow.x)) *
+            (Math.atan2(wristKeypoint.y - elbowKeypoint.y, wristKeypoint.x - elbowKeypoint.x) -
+              Math.atan2(shoulderKeypoint.y - elbowKeypoint.y, shoulderKeypoint.x - elbowKeypoint.x)) *
               (180 / Math.PI)
           );
           
@@ -502,7 +510,7 @@ export default class PoseNet extends React.Component {
           this.setState({ state_sequence: sequence});
 
           const shoulderAngle = Math.abs(
-            (Math.atan2(rightElbow.y - rightShoulder.y, rightElbow.x - rightShoulder.x) - Math.PI / 2) *
+            (Math.atan2(elbowKeypoint.y - shoulderKeypoint.y, elbowKeypoint.x - shoulderKeypoint.x) - Math.PI / 2) *
               (180 / Math.PI)
           );
 
@@ -587,7 +595,13 @@ export default class PoseNet extends React.Component {
     const speechSynthesis = window.speechSynthesis;
     speechSynthesis.lang = 'zh-TW';
     const utterance = new SpeechSynthesisUtterance(message);
+
+    utterance.onerror = (error) =>{
+      console.log('SpeechSynthesis occurs error: ', error)
+    }
+    
     speechSynthesis.speak(utterance);
+    console.log('SpeechSynthesis message: ', message);
   }
   
 
