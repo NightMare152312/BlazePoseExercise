@@ -316,7 +316,7 @@ export default class PoseNet extends React.Component {
           }
 
           // 判斷動作過程中膝蓋是否超過腳趾
-          if(keypoints[rightAnkleIndex].score >= minPartConfidence){
+          if(ankleKeypoint.score >= minPartConfidence){
             const ankleAngle = Math.atan2(ankleKeypoint.y - kneeKeypoint.y, ankleKeypoint.x - kneeKeypoint.x) * (180 / Math.PI) - 90;
 
             if(Math.abs(ankleAngle) > 30){
